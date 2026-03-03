@@ -8,7 +8,7 @@ import time
 import random
 
 # --- 1. AYARLAR & VERİ SİSTEMİ ---
-VERI_DOSYASI = "nida_v62_final.json"
+VERI_DOSYASI = "nida_v63_final.json"
 HOCA_TEL = "905307368072"
 KONU_BARAJI = 150 
 
@@ -32,7 +32,7 @@ M_LGS = {"Matematik": ["Çarpanlar Katlar", "Üslü İfadeler", "Kareköklü", "
 M_YKS = {"TYT Matematik": ["Temel Kavramlar", "Sayılar", "Problemler", "Kümeler", "Fonksiyonlar", "Permütasyon-Olasılık"], "AYT Matematik": ["Polinomlar", "Trigonometri", "Logaritma", "Diziler", "Limit", "Türev", "İntegral"], "Türkçe & Edebiyat": ["Paragraf", "Dil Bilgisi", "Şiir Bilgisi", "Edebiyat Akımları", "Dönemler"], "TYT Fizik": ["Madde", "Kuvvet", "Enerji", "Optik", "Dalgalar"], "AYT Fizik": ["Atışlar", "Momentum", "Tork", "Elektrik", "Manyetizma"], "TYT Kimya": ["Atom", "Maddenin Halleri", "Karışımlar"], "AYT Kimya": ["Gazlar", "Enerji", "Denge", "Organik"], "TYT Biyoloji": ["Hücre", "Kalıtım"], "AYT Biyoloji": ["Sistemler", "Genden Proteine", "Bitki Biyolojisi"], "Tarih-Coğrafya": ["Osmanlı", "İnkılap", "İklim", "Nüfus"]}
 
 # --- 3. TASARIM ---
-st.set_page_config(page_title="Nida Akademi v62", layout="wide")
+st.set_page_config(page_title="Nida Akademi v63", layout="wide")
 st.markdown("<style>.stApp { background-color: #0d1117; color: white; }</style>", unsafe_allow_html=True)
 
 # --- 4. GİRİŞ ---
@@ -57,67 +57,78 @@ else:
         if st.sidebar.button("🔴 Çıkış"): del st.session_state["logged_in"]; st.rerun()
 
         if menu == "Öğrenci Kaydı":
+            st.subheader("👤 Yeni Öğrenci Ekle")
             ad = st.text_input("Ad Soyad")
             grp = st.selectbox("Sınav Grubu", ["LGS", "YKS"])
             v_t = st.text_input("Veli Tel (905...)")
             if st.button("Kaydet"):
                 s = str(random.randint(1000, 9999))
                 st.session_state.db["ogrenciler"][ad] = {"soru": [], "denemeler": [], "sinav": grp, "v_tel": v_t, "sifre": s, "gunluk_puanlar": []}
-                veri_kaydet(st.session_state.db); st.success(f"Şifre: {s}")
+                veri_kaydet(st.session_state.db); st.success(f"Kaydedildi. Geçici Şifre: {s}")
 
         elif menu == "Analiz & Veli Raporları":
             ogrenciler = list(st.session_state.db.get("ogrenciler", {}).keys())
             if ogrenciler:
                 sec = st.selectbox("Öğrenci Seç", ogrenciler)
                 o = st.session_state.db["ogrenciler"][sec]
+                st.info(f"🔑 Öğrencinin Güncel Şifresi: {o.get('sifre')}")
                 
-                a1, a2, a3, a4 = st.tabs(["📊 Müfredat İlerleme", "📝 Çalışma Tablosu", "🧠 Mod Takibi", "🏆 Denemeler"])
-                
+                a1, a2, a3 = st.tabs(["📊 İlerleme", "📋 Çalışmalar", "📱 Veliye Rapor"])
                 with a1:
                     df_ana = pd.DataFrame(o.get("soru", []))
                     m_liste = M_LGS if o["sinav"] == "LGS" else M_YKS
                     for d_adi, konular in m_liste.items():
                         coz = df_ana[df_ana['Ders'] == d_adi]['Toplam'].sum() if not df_ana.empty else 0
-                        yuzde = min(int(coz / (len(konular) * KONU_BARAJI) * 100), 100)
-                        st.write(f"*{d_adi}* - Toplam Soru: {coz}"); st.progress(yuzde / 100)
+                        st.write(f"*{d_adi}*: {coz} Soru")
+                        st.progress(min(int(coz / (len(konular) * KONU_BARAJI) * 100), 100) / 100)
                 
                 with a2:
                     if o["soru"]: st.table(pd.DataFrame(o["soru"]))
                     else: st.info("Veri yok.")
 
-                # --- GELİŞMİŞ VELİ MESAJI OLUŞTURMA ---
-                bugun = datetime.now().strftime("%d/%m")
-                df_bugun = df_ana[df_ana['Tarih'].str.contains(bugun)] if not df_ana.empty else pd.DataFrame()
-                
-                if not df_bugun.empty:
-                    toplam_soru = df_bugun['Toplam'].sum()
-                    konular = ", ".join(df_bugun['Konu'].unique())
-                    v_msg = f"Sayın Veli, {sec} bugün toplam {toplam_soru} soru çözdü. Çalıştığı konular: {konular}. - Nida GÖMCELİ"
-                else:
-                    v_msg = f"Sayın Veli, {sec} bugün henüz soru girişi yapmadı. Bilginize. - Nida GÖMCELİ"
-
-                st.divider()
-                st.subheader("📱 Veli Bilgilendirme")
-                st.write(f"*Gidecek Mesaj:* {v_msg}")
-                st.markdown(f'<a href="https://wa.me/{o["v_tel"]}?text={urllib.parse.quote(v_msg)}" target="_blank" style="background-color:#25D366; color:white; padding:15px; text-decoration:none; border-radius:10px; font-weight:bold;">📱 WHATSAPP RAPORU GÖNDER</a>', unsafe_allow_html=True)
+                with a3:
+                    bugun = datetime.now().strftime("%d/%m")
+                    df_bugun = df_ana[df_ana['Tarih'].str.contains(bugun)] if not df_ana.empty else pd.DataFrame()
+                    if not df_bugun.empty:
+                        toplam_soru = df_bugun['Toplam'].sum()
+                        konular = ", ".join(df_bugun['Konu'].unique())
+                        v_msg = f"Sayın Veli, {sec} bugün toplam {toplam_soru} soru çözdü. Çalıştığı konular: {konular}. - Nida GÖMCELİ"
+                    else: v_msg = f"Sayın Veli, {sec} bugün henüz soru girişi yapmadı. - Nida GÖMCELİ"
+                    
+                    st.write(f"*Mesaj:* {v_msg}")
+                    st.markdown(f'<a href="https://wa.me/{o["v_tel"]}?text={urllib.parse.quote(v_msg)}" target="_blank" style="background-color:#25D366; color:white; padding:15px; text-decoration:none; border-radius:10px;">📱 WHATSAPP GÖNDER</a>', unsafe_allow_html=True)
 
     # --- 6. ÖĞRENCİ PANELİ ---
     else:
         u = st.session_state["user"]; o = st.session_state.db["ogrenciler"][u]
         m = M_LGS if o["sinav"] == "LGS" else M_YKS
-        st.title(f"Selam {u} ✨")
-        if st.button("Çıkış"): del st.session_state["logged_in"]; st.rerun()
+        
+        c1, c2 = st.columns([5,1])
+        c1.title(f"Selam {u} ✨")
+        if c2.button("Çıkış"): del st.session_state["logged_in"]; st.rerun()
 
-        with st.expander("📝 Çalışma Ekle"):
+        t = st.tabs(["📝 Çalışma Ekle", "📊 Müfredat", "🏆 Deneme", "🔐 Şifremi Değiştir"])
+        
+        with t[0]:
             d = st.selectbox("Ders", list(m.keys())); k = st.selectbox("Konu", m[d])
-            soru = st.number_input("Soru Sayısı", 0); sure = st.number_input("Süre (dk)", 0)
+            soru = st.number_input("Soru", 0); sure = st.number_input("Süre (dk)", 0)
             if st.button("Kaydet"):
                 o["soru"].append({"Tarih": datetime.now().strftime("%d/%m %H:%M"), "Ders": d, "Konu": k, "Toplam": soru, "Sure": sure})
                 veri_kaydet(st.session_state.db); st.success("Kaydedildi!")
 
-        t = st.tabs(["📊 Müfredat", "🏆 Deneme"])
-        with t[0]:
+        with t[1]:
             df_st = pd.DataFrame(o.get("soru", []))
             for d_adi, konular in m.items():
                 coz = df_st[df_st['Ders'] == d_adi]['Toplam'].sum() if not df_st.empty else 0
                 st.write(f"*{d_adi}*: {coz} Soru"); st.progress(min(coz/(len(konular)*KONU_BARAJI), 1.0))
+
+        with t[3]:
+            st.subheader("🔐 Yeni Şifre Belirle")
+            yeni_sifre = st.text_input("Yeni Şifre", type="password")
+            onay_sifre = st.text_input("Yeni Şifre (Tekrar)", type="password")
+            if st.button("Şifreyi Güncelle"):
+                if yeni_sifre == onay_sifre and len(yeni_sifre) > 2:
+                    o["sifre"] = yeni_sifre
+                    veri_kaydet(st.session_state.db)
+                    st.success("Şifreniz başarıyla güncellendi! Bir sonraki girişte yeni şifrenizi kullanın.")
+                else: st.error("Şifreler uyuşmuyor veya çok kısa!")
