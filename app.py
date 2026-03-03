@@ -8,7 +8,7 @@ import time
 import random
 
 # --- 1. AYARLAR & VERİ SİSTEMİ ---
-VERI_DOSYASI = "nida_v55_final.json"
+VERI_DOSYASI = "nida_v57_final.json"
 HOCA_TEL = "905307368072"
 KONU_BARAJI = 150 
 
@@ -17,8 +17,8 @@ def veri_yukle():
         try:
             with open(VERI_DOSYASI, "r", encoding="utf-8") as f:
                 return json.load(f)
-        except: return {"ogrenciler": {}}
-    return {"ogrenciler": {}}
+        except: return {"ogrenciler": {}, "gunluk_mod": {}}
+    return {"ogrenciler": {}, "gunluk_mod": {}}
 
 def veri_kaydet(veri):
     with open(VERI_DOSYASI, "w", encoding="utf-8") as f:
@@ -48,7 +48,7 @@ M_YKS = {
 }
 
 # --- 3. TASARIM ---
-st.set_page_config(page_title="Nida Akademi v55", layout="wide")
+st.set_page_config(page_title="Nida Akademi v57", layout="wide")
 st.markdown("<style>.stApp { background-color: #0d1117; color: white; }</style>", unsafe_allow_html=True)
 
 # --- 4. GİRİŞ ---
@@ -80,31 +80,34 @@ else:
                 h = st.number_input("Haftalık Hedef", 100)
                 if st.button("Kaydet"):
                     s = str(random.randint(1000, 9999))
-                    st.session_state.db["ogrenciler"][ad] = {"soru": [], "denemeler": [], "sinav": grp, "hedef": h, "v_tel": v_t, "sifre": s}
-                    veri_kaydet(st.session_state.db); st.success(f"Kaydedildi. Şifre: {s}")
+                    st.session_state.db["ogrenciler"][ad] = {"soru": [], "denemeler": [], "sinav": grp, "hedef": h, "v_tel": v_t, "sifre": s, "gunluk_puanlar": []}
+                    veri_kaydet(st.session_state.db); st.success(f"Şifre: {s}")
 
         elif menu == "Analiz & Veli Raporları":
             sec = st.selectbox("Öğrenci Seç", list(st.session_state.db.get("ogrenciler", {}).keys()))
             o = st.session_state.db["ogrenciler"][sec]
             df = pd.DataFrame(o["soru"])
-            st.title(f"📊 {sec} - Gelişim Raporu")
+            st.title(f"📊 {sec} Analizi")
             
-            # MÜFREDAT DURUMU
+            # DUYGUSAL DURUM GÖSTERİMİ
+            if "gunluk_puanlar" in o and o["gunluk_puanlar"]:
+                st.subheader("🧠 Bugün Nasıl Hissediyor?")
+                son_mod = o["gunluk_puanlar"][-1]
+                st.info(f"Tarih: {son_mod['Tarih']} | Puan: {son_mod['Puan']}/10 | Mod: {son_mod['Mod']}")
+                if son_mod['Not']: st.write(f"Öğrenci Notu: {son_mod['Not']}")
+
+            # MÜFREDAT ANALİZİ
             if not df.empty:
                 konu_ozet = df.groupby(['Ders', 'Konu'])['Toplam'].sum().reset_index()
                 for d_adi, konular in (M_LGS if o["sinav"] == "LGS" else M_YKS).items():
                     st.subheader(f"📘 {d_adi}")
-                    cols = st.columns(2)
-                    for i, kn in enumerate(konular):
-                        cozulen = konu_ozet[(konu_ozet['Ders'] == d_adi) & (konu_ozet['Konu'] == kn)]['Toplam'].sum()
-                        yuzde = min(int((cozulen / KONU_BARAJI) * 100), 100)
-                        cols[i % 2].write(f"*{kn}*: {cozulen}/{KONU_BARAJI} Soru (%{yuzde})")
-                        cols[i % 2].progress(yuzde / 100)
+                    coz_t = konu_ozet[konu_ozet['Ders'] == d_adi]['Toplam'].sum()
+                    st.write(f"Toplam Çözülen: {coz_t} Soru")
+                    st.progress(min(int(coz_t/(len(konular)*KONU_BARAJI)*100), 100)/100)
 
-                # VELİ RAPORU
                 bugun = datetime.now().strftime("%d/%m")
                 b_df = df[df['Tarih'].str.contains(bugun)]
-                v_msg = f"Sayın Veli, {sec} bugün {b_df['Sure'].sum()} dk çalıştı. Toplam {b_df['Toplam'].sum()} soru çözdü. - Nida GÖMCELİ"
+                v_msg = f"Sayın Veli, {sec} bugün {b_df['Sure'].sum()} dk çalıştı. {b_df['Toplam'].sum()} soru çözdü. Modu: {o['gunluk_puanlar'][-1]['Mod'] if o.get('gunluk_puanlar') else 'Belirtilmedi'} - Nida GÖMCELİ"
                 st.markdown(f'<a href="https://wa.me/{o["v_tel"]}?text={urllib.parse.quote(v_msg)}" target="_blank" style="background-color:#25D366; color:white; padding:15px; text-decoration:none; border-radius:10px;">📱 VELİYE RAPOR AT</a>', unsafe_allow_html=True)
 
     # --- 6. ÖĞRENCİ PANELİ ---
@@ -113,44 +116,49 @@ else:
         m = M_LGS if o["sinav"] == "LGS" else M_YKS
         st.title(f"Selam {u} ✨")
         
-        # --- HOCAMA BİLDİR ---
-        with st.container():
-            st.subheader("📩 Nida Hocama Mesaj Gönder")
-            msg = st.text_area("Mesajını buraya yaz...", placeholder="Hocam şu konuyu anlamadım...")
-            if st.button("Hocama Bildir (WhatsApp)"):
+        # --- HOCAMA BİLDİR & KRONOMETRE ---
+        with st.expander("📩 Nida Hocama Mesaj Gönder"):
+            msg = st.text_area("Mesajın...")
+            if st.button("WhatsApp ile Gönder"):
                 w_url = f"https://wa.me/{HOCA_TEL}?text={urllib.parse.quote(f'Hocam Ben {u}: {msg}')}"
-                st.markdown(f'<meta http-equiv="refresh" content="0;URL=\'{w_url}\'">', unsafe_allow_html=True)
+                st.markdown(f'<a href="{w_url}" target="_blank" style="color:white; background:blue; padding:10px;">Gönder</a>', unsafe_allow_html=True)
 
-        st.divider()
-        # --- KRONOMETRE ---
-        st.subheader("⏱️ Canlı Ders Kronometresi")
+        st.subheader("⏱️ Canlı Kronometre")
         if 'elapsed_time' not in st.session_state: st.session_state.elapsed_time = 0
         if 'running' not in st.session_state: st.session_state.running = False
-        
         c1, c2, c3 = st.columns(3)
-        if c1.button("▶️ Başlat"): 
-            st.session_state.start_time = time.time() - st.session_state.elapsed_time
-            st.session_state.running = True
+        if c1.button("▶️ Başlat"): st.session_state.start_time = time.time() - st.session_state.elapsed_time; st.session_state.running = True
         if c2.button("⏸️ Durdur"): st.session_state.running = False
         if c3.button("🔄 Sıfırla"): st.session_state.elapsed_time = 0; st.session_state.running = False
-
         if st.session_state.running: st.session_state.elapsed_time = time.time() - st.session_state.start_time
         mins, secs = divmod(int(st.session_state.elapsed_time), 60)
         st.header(f"{mins:02d}:{secs:02d}")
         if st.session_state.running: time.sleep(1); st.rerun()
 
-        t1, t2, t3, t4 = st.tabs(["📝 Çalışma Girişi", "📊 Müfredat", "🏆 Deneme Analizi", "🧮 Puan Robotu"])
+        t1, t2, t3, t4, t5 = st.tabs(["🌟 Bugün Nasıldım?", "📝 Çalışma", "📊 Müfredat", "🏆 Deneme", "🧮 Puan"])
 
         with t1:
-            tur = st.selectbox("Tür", ["Soru Çözümü", "Konu Videosu", "Özel Ders", "Kitap Okuma"])
-            col1, col2 = st.columns(2)
-            d = col1.selectbox("Ders", list(m.keys())); k = col2.selectbox("Konu", m[d])
-            soru = col1.number_input("Soru Sayısı", 0); sure = col2.number_input("Süre (dk)", value=mins)
-            if st.button("Kaydı Tamamla"):
+            st.subheader("🌈 Günlük Değerlendirme")
+            g_puan = st.slider("Bugün kendine kaç puan veriyorsun?", 1, 10, 5)
+            g_mod = st.select_slider("Şu anki modun nasıl?", options=["Çok Kötü", "Yorgun", "Normal", "Enerjik", "Harika!"])
+            g_not = st.text_area("Hocana bugünün özeti olarak ne söylemek istersin?")
+            if st.button("Günümü Kaydet"):
+                if "gunluk_puanlar" not in o: o["gunluk_puanlar"] = []
+                o["gunluk_puanlar"].append({
+                    "Tarih": datetime.now().strftime("%d/%m"),
+                    "Puan": g_puan, "Mod": g_mod, "Not": g_not
+                })
+                veri_kaydet(st.session_state.db); st.success("Bugün tarihe not düşüldü! 💪")
+
+        with t2:
+            tur = st.selectbox("Tür", ["Soru Çözümü", "Video", "Özel Ders", "Kitap"])
+            d = st.selectbox("Ders", list(m.keys())); k = st.selectbox("Konu", m[d])
+            soru = st.number_input("Soru", 0); sure = st.number_input("Süre (dk)", value=mins)
+            if st.button("Çalışmayı Kaydet"):
                 o["soru"].append({"Tarih": datetime.now().strftime("%d/%m %H:%M"), "Tür": tur, "Ders": d, "Konu": k, "Toplam": soru, "Sure": sure})
                 veri_kaydet(st.session_state.db); st.success("Kaydedildi!")
 
-        with t2:
+        with t3:
             df_std = pd.DataFrame(o["soru"])
             if not df_std.empty:
                 k_oz = df_std.groupby(['Ders', 'Konu'])['Toplam'].sum().reset_index()
@@ -161,33 +169,27 @@ else:
                             yuz = min(int((coz / KONU_BARAJI) * 100), 100)
                             st.write(f"*{kn}*: %{yuz} ({coz} Soru)"); st.progress(yuz / 100)
 
-        with t3:
-            st.subheader("🏆 Deneme Doğru-Yanlış Analizi")
-            st.info("Netler otomatik hesaplanır (LGS: 3 yanlış 1 doğru, YKS: 4 yanlış 1 doğru)")
-            cols = st.columns(2)
-            d_giris = cols[0].number_input("Toplam Doğru", 0)
-            y_giris = cols[1].number_input("Toplam Yanlış", 0)
-            
-            eksik_ders = st.selectbox("Hangi Dersten Yanlışın Çok?", list(m.keys()))
-            eksik_konular = st.multiselect("Yanlış Yaptığın Konuları Seç", m[eksik_ders])
-            
-            if st.button("Denemeyi Analize Ekle"):
-                o["denemeler"].append({
-                    "Tarih": datetime.now().strftime("%d/%m"),
-                    "D": d_giris, "Y": y_giris,
-                    "Eksikler": eksik_konular
-                })
-                veri_kaydet(st.session_state.db); st.success("Deneme kaydedildi!")
-
         with t4:
-            st.subheader("🧮 Puan Hesaplama Robotu")
-            if o["sinav"] == "LGS":
-                m_d = st.number_input("Matematik Doğru", 0); m_y = st.number_input("Matematik Yanlış", 0)
-                f_d = st.number_input("Fen Doğru", 0); f_y = st.number_input("Fen Yanlış", 0)
-                t_d = st.number_input("Türkçe Doğru", 0); t_y = st.number_input("Türkçe Yanlış", 0)
-                m_net = m_d - (m_y/3); f_net = f_d - (f_y/3); t_net = t_d - (t_y/3)
-                puan_h = 194 + (m_net * 4.95) + (f_net * 4.07) + (t_net * 4.33)
-            else:
-                tyt_d = st.number_input("TYT Doğru", 0); tyt_y = st.number_input("TYT Yanlış", 0)
-                net = tyt_d - (tyt_y/4); puan_h = 100 + (net * 1.32) + 50
-            st.write(f"## Tahmini Puanın: {round(puan_h, 2)}")
+            st.subheader("🏆 Deneme Branş Analizi")
+            deneme_verisi = {"Eksikler": []}
+            for ders_adi in m.keys():
+                st.write(f"--- *{ders_adi}* ---")
+                col1, col2 = st.columns(2)
+                d_s = col1.number_input(f"{ders_adi} D", 0, key=f"d_{ders_adi}")
+                y_s = col2.number_input(f"{ders_adi} Y", 0, key=f"y_{ders_adi}")
+                eksik = st.multiselect(f"{ders_adi} Yanlış Konuların", m[ders_adi], key=f"e_{ders_adi}")
+                deneme_verisi[ders_adi] = {"D": d_s, "Y": y_s}
+                deneme_verisi["Eksikler"].extend(eksik)
+            if st.button("Denemeyi İşle"):
+                deneme_verisi["Tarih"] = datetime.now().strftime("%d/%m")
+                o["denemeler"].append(deneme_verisi); veri_kaydet(st.session_state.db); st.success("Kaydedildi!")
+
+        with t5:
+            st.subheader("🧮 Net Hesapla")
+            total_net = 0
+            for ders_adi in m.keys():
+                col1, col2 = st.columns(2)
+                d_r = col1.number_input(f"{ders_adi} Doğru", 0, key=f"p_d_{ders_adi}")
+                y_r = col2.number_input(f"{ders_adi} Yanlış", 0, key=f"p_y_{ders_adi}")
+                total_net += d_r - (y_r/3 if o["sinav"]=="LGS" else y_r/4)
+            st.write(f"## Toplam Net: {round(total_net, 2)}")
