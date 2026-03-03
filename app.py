@@ -8,7 +8,7 @@ import time
 import random
 
 # --- 1. AYARLAR & VERİ SİSTEMİ ---
-VERI_DOSYASI = "nida_v54_final.json"
+VERI_DOSYASI = "nida_v55_final.json"
 HOCA_TEL = "905307368072"
 KONU_BARAJI = 150 
 
@@ -27,7 +27,7 @@ def veri_kaydet(veri):
 if 'db' not in st.session_state:
     st.session_state.db = veri_yukle()
 
-# --- 2. TAM MÜFREDAT LİSTESİ ---
+# --- 2. MÜFREDAT LİSTESİ ---
 M_LGS = {
     "Matematik": ["Çarpanlar Katlar", "Üslü İfadeler", "Kareköklü", "Veri Analizi", "Olasılık", "Cebirsel", "Denklemler", "Eşitsizlikler", "Üçgenler", "Eşlik Benzerlik", "Dönüşüm", "Geometrik Cisimler"],
     "Fen Bilimleri": ["Mevsimler", "DNA", "Basınç", "Madde", "Basit Makineler", "Enerji", "Elektrik"],
@@ -48,7 +48,7 @@ M_YKS = {
 }
 
 # --- 3. TASARIM ---
-st.set_page_config(page_title="Nida Akademi v54 Master", layout="wide")
+st.set_page_config(page_title="Nida Akademi v55", layout="wide")
 st.markdown("<style>.stApp { background-color: #0d1117; color: white; }</style>", unsafe_allow_html=True)
 
 # --- 4. GİRİŞ ---
@@ -70,7 +70,7 @@ else:
     if st.session_state["role"] == "admin":
         st.sidebar.title("Nida Hocam")
         menu = st.sidebar.radio("Menü", ["Öğrenci Kaydı", "Analiz & Veli Raporları"])
-        if st.sidebar.button("Güvenli Çıkış"): del st.session_state["logged_in"]; st.rerun()
+        if st.sidebar.button("Çıkış"): del st.session_state["logged_in"]; st.rerun()
 
         if menu == "Öğrenci Kaydı":
             with st.expander("👤 Yeni Öğrenci Ekle"):
@@ -87,12 +87,12 @@ else:
             sec = st.selectbox("Öğrenci Seç", list(st.session_state.db.get("ogrenciler", {}).keys()))
             o = st.session_state.db["ogrenciler"][sec]
             df = pd.DataFrame(o["soru"])
-            m = M_LGS if o["sinav"] == "LGS" else M_YKS
             st.title(f"📊 {sec} - Gelişim Raporu")
             
+            # MÜFREDAT DURUMU
             if not df.empty:
                 konu_ozet = df.groupby(['Ders', 'Konu'])['Toplam'].sum().reset_index()
-                for d_adi, konular in m.items():
+                for d_adi, konular in (M_LGS if o["sinav"] == "LGS" else M_YKS).items():
                     st.subheader(f"📘 {d_adi}")
                     cols = st.columns(2)
                     for i, kn in enumerate(konular):
@@ -101,6 +101,7 @@ else:
                         cols[i % 2].write(f"*{kn}*: {cozulen}/{KONU_BARAJI} Soru (%{yuzde})")
                         cols[i % 2].progress(yuzde / 100)
 
+                # VELİ RAPORU
                 bugun = datetime.now().strftime("%d/%m")
                 b_df = df[df['Tarih'].str.contains(bugun)]
                 v_msg = f"Sayın Veli, {sec} bugün {b_df['Sure'].sum()} dk çalıştı. Toplam {b_df['Toplam'].sum()} soru çözdü. - Nida GÖMCELİ"
@@ -112,14 +113,16 @@ else:
         m = M_LGS if o["sinav"] == "LGS" else M_YKS
         st.title(f"Selam {u} ✨")
         
-        # --- HOCAMA BİLDİR (WHATSAPP) ---
-        msg_hocam = st.text_input("Nida Hocama Mesaj Yaz:")
-        if st.button("📩 Hocama Bildir"):
-            w_url = f"https://wa.me/{HOCA_TEL}?text={urllib.parse.quote(f'Hocam Ben {u}: {msg_hocam}')}"
-            st.markdown(f'<a href="{w_url}" target="_blank" style="background-color:#007bff; color:white; padding:10px; text-decoration:none; border-radius:5px;">Mesajı WhatsApp ile Gönder</a>', unsafe_allow_html=True)
+        # --- HOCAMA BİLDİR ---
+        with st.container():
+            st.subheader("📩 Nida Hocama Mesaj Gönder")
+            msg = st.text_area("Mesajını buraya yaz...", placeholder="Hocam şu konuyu anlamadım...")
+            if st.button("Hocama Bildir (WhatsApp)"):
+                w_url = f"https://wa.me/{HOCA_TEL}?text={urllib.parse.quote(f'Hocam Ben {u}: {msg}')}"
+                st.markdown(f'<meta http-equiv="refresh" content="0;URL=\'{w_url}\'">', unsafe_allow_html=True)
 
-        # --- KRONOMETRE ---
         st.divider()
+        # --- KRONOMETRE ---
         st.subheader("⏱️ Canlı Ders Kronometresi")
         if 'elapsed_time' not in st.session_state: st.session_state.elapsed_time = 0
         if 'running' not in st.session_state: st.session_state.running = False
@@ -136,7 +139,6 @@ else:
         st.header(f"{mins:02d}:{secs:02d}")
         if st.session_state.running: time.sleep(1); st.rerun()
 
-        # --- TABLAR ---
         t1, t2, t3, t4 = st.tabs(["📝 Çalışma Girişi", "📊 Müfredat", "🏆 Deneme Analizi", "🧮 Puan Robotu"])
 
         with t1:
@@ -160,22 +162,32 @@ else:
                             st.write(f"*{kn}*: %{yuz} ({coz} Soru)"); st.progress(yuz / 100)
 
         with t3:
-            st.subheader("Deneme Analizi")
-            y_ders = st.selectbox("Eksik Ders Seç", list(m.keys()))
-            y_konu = st.multiselect("Eksik Konuları Seç", m[y_ders])
-            if st.button("Eksikleri Kaydet"):
-                o["denemeler"].append({"Tarih": datetime.now().strftime("%d/%m"), "Eksikler": y_konu})
-                veri_kaydet(st.session_state.db); st.success("Analiz eklendi.")
+            st.subheader("🏆 Deneme Doğru-Yanlış Analizi")
+            st.info("Netler otomatik hesaplanır (LGS: 3 yanlış 1 doğru, YKS: 4 yanlış 1 doğru)")
+            cols = st.columns(2)
+            d_giris = cols[0].number_input("Toplam Doğru", 0)
+            y_giris = cols[1].number_input("Toplam Yanlış", 0)
+            
+            eksik_ders = st.selectbox("Hangi Dersten Yanlışın Çok?", list(m.keys()))
+            eksik_konular = st.multiselect("Yanlış Yaptığın Konuları Seç", m[eksik_ders])
+            
+            if st.button("Denemeyi Analize Ekle"):
+                o["denemeler"].append({
+                    "Tarih": datetime.now().strftime("%d/%m"),
+                    "D": d_giris, "Y": y_giris,
+                    "Eksikler": eksik_konular
+                })
+                veri_kaydet(st.session_state.db); st.success("Deneme kaydedildi!")
 
         with t4:
             st.subheader("🧮 Puan Hesaplama Robotu")
             if o["sinav"] == "LGS":
-                m_n = st.number_input("Mat Net (D - Y/3)", 0.0)
-                f_n = st.number_input("Fen Net (D - Y/3)", 0.0)
-                t_n = st.number_input("Türkçe Net (D - Y/3)", 0.0)
-                soz_n = st.number_input("Sözel Net Toplam (İnk+Din+İng)", 0.0)
-                puan_h = 194 + (m_n * 4.95) + (f_n * 4.07) + (t_n * 4.33) + (soz_n * 1.6)
+                m_d = st.number_input("Matematik Doğru", 0); m_y = st.number_input("Matematik Yanlış", 0)
+                f_d = st.number_input("Fen Doğru", 0); f_y = st.number_input("Fen Yanlış", 0)
+                t_d = st.number_input("Türkçe Doğru", 0); t_y = st.number_input("Türkçe Yanlış", 0)
+                m_net = m_d - (m_y/3); f_net = f_d - (f_y/3); t_net = t_d - (t_y/3)
+                puan_h = 194 + (m_net * 4.95) + (f_net * 4.07) + (t_net * 4.33)
             else:
-                tyt_net = st.number_input("TYT Toplam Net", 0.0)
-                puan_h = 100 + (tyt_net * 1.32) + 50 # Örn Diploma
+                tyt_d = st.number_input("TYT Doğru", 0); tyt_y = st.number_input("TYT Yanlış", 0)
+                net = tyt_d - (tyt_y/4); puan_h = 100 + (net * 1.32) + 50
             st.write(f"## Tahmini Puanın: {round(puan_h, 2)}")
